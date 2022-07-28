@@ -3,7 +3,7 @@ import asyncio
 class Task(asyncio.Task):
     def __init__(self, *args, **kwargs):
         self._num_cancels_requested = 0
-        super().__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def cancel(self, *args, **kwargs):
         if not self.done():
