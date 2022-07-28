@@ -1,7 +1,7 @@
 # backported from cpython 3.12 bceb197947bbaebb11e01195bdce4f240fdf9332
 # Copyright © 2001-2022 Python Software Foundation; All Rights Reserved
 # modified to support working on 3.10, custom task_factory installed to
-# support uncancel. Maybe I'll get context working too some day!
+# support uncancel and contexts
 
 __all__ = ('Runner', 'run')
 
@@ -102,8 +102,7 @@ class Runner:
 
         if context is None:
             context = self._context
-        # task = self._loop.create_task(coro, context=context)
-        task = self._loop.create_task(coro)
+        task = _task_factory(self._loop, coro, context=context)
 
         if (threading.current_thread() is threading.main_thread()
             and signal.getsignal(signal.SIGINT) is signal.default_int_handler

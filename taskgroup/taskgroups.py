@@ -10,6 +10,8 @@ from asyncio import tasks
 
 from exceptiongroup import BaseExceptionGroup
 
+from .tasks import task_factory as _task_factory
+
 
 class TaskGroup:
 
@@ -146,8 +148,7 @@ class TaskGroup:
         if context is None:
             task = self._loop.create_task(coro)
         else:
-            # task = self._loop.create_task(coro, context=context)
-            task = self._loop.create_task(coro)
+            task = _task_factory(self._loop, coro, context=context)
         tasks._set_task_name(task, name)
         task.add_done_callback(self._on_task_done)
         self._tasks.add(task)
