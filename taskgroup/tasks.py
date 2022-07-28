@@ -11,9 +11,9 @@ class Task(asyncio.Task):
         return super().cancel(*args, **kwargs)
 
     def cancelling(self):
-        return self._num_cancels_requests
+        return self._num_cancels_requested
 
-    def uncancel(self, *args, **kwargs):
+    def uncancel(self):
         if self._num_cancels_requested > 0:
             self._num_cancels_requested -= 1
         return self._num_cancels_requested
