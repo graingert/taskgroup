@@ -23,26 +23,7 @@ class WaitTaskRescheduled:
         self._abort_func = abort_func
 
     def cancel(self, *args, **kwargs):
-        v = self._abort_func
-        # break a reference cycle and only support level cancel
-        del self._abort_func
-        v()
-
-        # asyncio.Task.cancel calls:
-        #
-        #     if self._fut_waiter is not None:
-        #         if self._fut_waiter.cancel(msg=msg):
-        #             # Leave self._fut_waiter; it may be a Task that
-        #             # catches and ignores the cancellation so we may have
-        #             # to cancel it again later.
-        #             return True
-        #     # It must be the case that self.__step is already scheduled.
-        #     self._must_cancel = True
-        #     self._cancel_message = msg
-        # fut_waiter (that's us) needs to return True otherwise task._must_cancel
-        # is set to True, which means when we wake up the task it will call
-        # coro.throw(CancelledError)!
-        return True
+        return self._abort_func(*args, **kwargs)
 
     def get_loop(self):
         return asyncio.get_running_loop()
@@ -60,23 +41,6 @@ class WaitTaskRescheduled:
 @types.coroutine
 def _async_yield(v):
     return (yield v)
-
-
-async def get_context():
-    context = None
-
-    def abort_func():
-        pass
-
-    def add_done_callback(reschedule, context_):
-        nonlocal context
-        context = context_
-        asyncio.current_task().get_loop().call_soon(reschedule, NullFuture())
-
-    await _async_yield(
-        WaitTaskRescheduled(add_done_callback=add_done_callback, abort_func=abort_func)
-    )
-    return context
 
 
 @collections.abc.Coroutine.register
@@ -119,26 +83,25 @@ async def install_uncancel():
         yield
         return
 
-    cancel_scope = timeouts.Timeout(None)
-    # Revised 'done' callback: set a Future
+    context = None
 
-    async def asyncio_main(coro):
-        async with cancel_scope:
-            return await coro
+    async def asyncio_main():
+        return await WrapCoro(task.get_coro(), context=context)
 
-    def add_done_callback(callback, context):
-        task = asyncio.current_task()
-        loop = task.get_loop()
-        new_task = _task_factory(
-            loop, asyncio_main(WrapCoro(task.get_coro(), context=context))
-        )
-        new_task.add_done_callback(callback, context=context)
+    task = asyncio.current_task()
+    loop = task.get_loop()
+    new_task = _task_factory(loop, asyncio_main())
+
+    def add_done_callback(callback, context_):
+        nonlocal context
+        context = context_
+        new_task.add_done_callback(callback, context=context_)
 
     # suspend the current task so we can use its coro
     await _async_yield(
         WaitTaskRescheduled(
             add_done_callback=add_done_callback,
-            abort_func=lambda: cancel_scope.reschedule(-1),
+            abort_func=new_task.cancel,
         )
     )
 
