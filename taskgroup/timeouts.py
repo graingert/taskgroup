@@ -2,14 +2,16 @@
 # Copyright © 2001-2022 Python Software Foundation; All Rights Reserved
 # modified to support working on 3.10 (basically just the imports changed here)
 
+import contextlib
 import enum
-
+import sys
 from types import TracebackType
 from typing import final, Optional, Type
 
 from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
+from . import install as _install
 
 
 __all__ = (
@@ -36,6 +38,7 @@ class Timeout:
         self._timeout_handler: Optional[events.TimerHandle] = None
         self._task: Optional[tasks.Task] = None
         self._when = when
+        self._cmgr = self._cmgr_factory()
 
     def when(self) -> Optional[float]:
         return self._when
@@ -73,13 +76,36 @@ class Timeout:
         info_str = ' '.join(info)
         return f"<Timeout [{self._state.value}]{info_str}>"
 
-    async def __aenter__(self) -> "Timeout":
+    @contextlib.asynccontextmanager
+    async def _cmgr_factory(self):
         self._state = _State.ENTERED
-        self._task = tasks.current_task()
-        if self._task is None:
-            raise RuntimeError("Timeout should be used inside a task")
-        self.reschedule(self._when)
-        return self
+        async with _install.install_uncancel():
+            self._task = tasks.current_task()
+            if self._task is None:
+                raise RuntimeError("Timeout should be used inside a task")
+            self.reschedule(self._when)
+            try:
+                yield self
+            finally:
+                exc_type, _, _ = sys.exc_info()
+                assert self._state in (_State.ENTERED, _State.EXPIRING)
+
+                if self._timeout_handler is not None:
+                    self._timeout_handler.cancel()
+                    self._timeout_handler = None
+
+                if self._state is _State.EXPIRING:
+                    self._state = _State.EXPIRED
+
+                    if self._task.uncancel() == 0 and exc_type is exceptions.CancelledError:
+                        # Since there are no outstanding cancel requests, we're
+                        # handling this.
+                        raise TimeoutError
+                elif self._state is _State.ENTERED:
+                    self._state = _State.EXITED
+
+    async def __aenter__(self) -> "Timeout":
+        return await self._cmgr.__aenter__()
 
     async def __aexit__(
         self,
@@ -87,23 +113,7 @@ class Timeout:
         exc_val: Optional[BaseException],
         exc_tb: Optional[TracebackType],
     ) -> Optional[bool]:
-        assert self._state in (_State.ENTERED, _State.EXPIRING)
-
-        if self._timeout_handler is not None:
-            self._timeout_handler.cancel()
-            self._timeout_handler = None
-
-        if self._state is _State.EXPIRING:
-            self._state = _State.EXPIRED
-
-            if self._task.uncancel() == 0 and exc_type is exceptions.CancelledError:
-                # Since there are no outstanding cancel requests, we're
-                # handling this.
-                raise TimeoutError
-        elif self._state is _State.ENTERED:
-            self._state = _State.EXITED
-
-        return None
+        return await self._cmgr.__aexit__(exc_type, exc_val, exc_tb)
 
     def _on_timeout(self) -> None:
         assert self._state is _State.ENTERED
