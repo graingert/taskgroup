@@ -2,17 +2,20 @@
 # Copyright © 2001-2022 Python Software Foundation; All Rights Reserved
 # modified to support working on 3.10 (basically just the imports changed here)
 
+import collections.abc
 import contextlib
 import enum
 import sys
 from types import TracebackType
-from typing import final, Optional, Type
+from typing import final, Optional, Type, TYPE_CHECKING
 
 from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
 from . import install as _install
 
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 __all__ = (
     "Timeout",
@@ -77,7 +80,7 @@ class Timeout:
         return f"<Timeout [{self._state.value}]{info_str}>"
 
     @contextlib.asynccontextmanager
-    async def _cmgr_factory(self):
+    async def _cmgr_factory(self) -> collections.abc.AsyncGenerator[Self, None]:
         self._state = _State.ENTERED
         async with _install.install_uncancel():
             self._task = tasks.current_task()

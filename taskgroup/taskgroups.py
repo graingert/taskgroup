@@ -2,22 +2,32 @@
 # Copyright © 2001-2022 Python Software Foundation; All Rights Reserved
 # modified to support working on 3.10
 
+from __future__ import annotations
+from contextvars import Context
+
 __all__ = ["TaskGroup"]
 
 import sys
 from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
+from collections.abc import AsyncGenerator, Coroutine
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from exceptiongroup import BaseExceptionGroup
 import contextlib
-from .tasks import task_factory as _task_factory
+from .tasks import task_factory as _task_factory, Task
 from . import install as _install
+
+if TYPE_CHECKING:
+    from typing_extensions import Self, Literal
+
+_T = TypeVar("_T")
 
 
 class TaskGroup:
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._entered = False
         self._exiting = False
         self._aborting = False
@@ -30,7 +40,7 @@ class TaskGroup:
         self._on_completed_fut = None
         self._cmgr = self._cmgr_factory()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         info = ['']
         if self._tasks:
             info.append(f'tasks={len(self._tasks)}')
@@ -45,7 +55,7 @@ class TaskGroup:
         return f'<TaskGroup{info_str}>'
 
     @contextlib.asynccontextmanager
-    async def _cmgr_factory(self):
+    async def _cmgr_factory(self) -> AsyncGenerator[Self, None]:
         if self._entered:
             raise RuntimeError(
                 f"TaskGroup {self!r} has been already entered")
@@ -144,15 +154,14 @@ class TaskGroup:
                     me = BaseExceptionGroup('unhandled errors in a TaskGroup', errors)
                     raise me from None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         return await self._cmgr.__aenter__()
 
+    async def __aexit__(self, *exc_info) -> bool | None:
+        return await self._cmgr.__aexit__(*exc_info)  # type: ignore
 
-    async def __aexit__(self, *exc_info):
-        return await self._cmgr.__aexit__(*exc_info)
 
-
-    def create_task(self, coro, *, name=None, context=None):
+    def create_task(self, coro: Coroutine[Any, Any, _T], *, name: str | None = None, context: Context | None = None) -> Task[_T]:
         if not self._entered:
             raise RuntimeError(f"TaskGroup {self!r} has not been entered")
         if self._exiting and not self._tasks:
@@ -176,7 +185,7 @@ class TaskGroup:
         assert isinstance(exc, BaseException)
         return isinstance(exc, (SystemExit, KeyboardInterrupt))
 
-    def _abort(self):
+    def _abort(self) -> None:
         self._aborting = True
 
         for t in self._tasks:

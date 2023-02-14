@@ -5,6 +5,7 @@
 
 __all__ = ('Runner', 'run')
 
+import collections.abc
 import contextvars
 import enum
 import functools
@@ -14,7 +15,11 @@ from asyncio import coroutines
 from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
+from typing import TYPE_CHECKING, Any, TypeVar
 from . tasks import task_factory as _task_factory
+
+if TYPE_CHECKING:
+    from typing_extensions import final, Self
 
 
 class _State(enum.Enum):
@@ -23,6 +28,9 @@ class _State(enum.Enum):
     CLOSED = "closed"
 
 
+_T = TypeVar("_T")
+
+@final
 class Runner:
     """A context manager that controls event loop life cycle.
 
@@ -51,7 +59,16 @@ class Runner:
 
     # Note: the class is final, it is not intended for inheritance.
 
-    def __init__(self, *, debug=None, loop_factory=None):
+    def __init__(
+        self,
+        *,
+        debug: bool | None = None,
+        loop_factory: collections.abc.Callable[
+            [
+                events.AbstractEventLoop,
+                collections.abc.Coroutine[Any, Any, _T] | collections.abc.Generator[Any, Any, _T]
+            ], tasks.Task[_T]] | None = None
+        ) -> None:
         self._state = _State.CREATED
         self._debug = debug
         self._loop_factory = loop_factory
@@ -60,14 +77,14 @@ class Runner:
         self._interrupt_count = 0
         self._set_event_loop = False
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         self._lazy_init()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         """Shutdown and close event loop."""
         if self._state is not _State.INITIALIZED:
             return
@@ -83,12 +100,13 @@ class Runner:
             self._loop = None
             self._state = _State.CLOSED
 
-    def get_loop(self):
+    def get_loop(self) -> AbstractEventLoop:
         """Return embedded event loop."""
         self._lazy_init()
+        assert self._loop is not None
         return self._loop
 
-    def run(self, coro, *, context=None):
+    def run(self, coro: collections.abc.Coroutine[Any, Any, _T], *, context: contextvars.Context | None = None) -> _T:
         """Run a coroutine inside the embedded event loop."""
         if not coroutines.iscoroutine(coro):
             raise ValueError("a coroutine was expected, got {!r}".format(coro))
@@ -134,7 +152,7 @@ class Runner:
             ):
                 signal.signal(signal.SIGINT, signal.default_int_handler)
 
-    def _lazy_init(self):
+    def _lazy_init(self) -> None:
         if self._state is _State.CLOSED:
             raise RuntimeError("Runner is closed")
         if self._state is _State.INITIALIZED:
@@ -160,7 +178,7 @@ class Runner:
         raise KeyboardInterrupt()
 
 
-def run(main, *, debug=None):
+def run(main: collections.abc.Coroutine[Any, Any, _T], *, debug: bool | None = None) -> _T:
     """Execute the coroutine and return the result.
 
     This function runs the passed coroutine, taking care of
