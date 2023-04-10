@@ -18,9 +18,7 @@ from asyncio import tasks
 from typing import TYPE_CHECKING, Any, TypeVar, final
 from . tasks import task_factory as _task_factory
 
-if TYPE_CHECKING:
-    from typing_extensions import Self
-
+from typing_extensions import Self
 
 class _State(enum.Enum):
     CREATED = "created"
