@@ -19,8 +19,7 @@ import contextlib
 from .tasks import task_factory as _task_factory, Task
 from . import install as _install
 
-if TYPE_CHECKING:
-    from typing_extensions import Self, Literal
+from typing_extensions import Self, Literal
 
 _T = TypeVar("_T")
 
