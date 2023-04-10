@@ -15,6 +15,7 @@ from asyncio import coroutines
 from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
+from asyncio import AbstractEventLoop
 from typing import TYPE_CHECKING, Any, TypeVar, final
 from . tasks import task_factory as _task_factory
 
