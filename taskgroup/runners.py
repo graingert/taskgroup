@@ -9,17 +9,15 @@ import collections.abc
 import contextvars
 import enum
 import functools
-import threading
 import signal
-from asyncio import coroutines
-from asyncio import events
-from asyncio import exceptions
-from asyncio import tasks
-from asyncio import AbstractEventLoop
-from typing import TYPE_CHECKING, Any, TypeVar, final
-from . tasks import task_factory as _task_factory
+import threading
+from asyncio import AbstractEventLoop, coroutines, events, exceptions, tasks
+from typing import Any, TypeVar, final
 
 from typing_extensions import Self
+
+from .tasks import task_factory as _task_factory
+
 
 class _State(enum.Enum):
     CREATED = "created"
@@ -62,11 +60,7 @@ class Runner:
         self,
         *,
         debug: bool | None = None,
-        loop_factory: collections.abc.Callable[
-            [
-                events.AbstractEventLoop,
-                collections.abc.Coroutine[Any, Any, _T] | collections.abc.Generator[Any, Any, _T]
-            ], tasks.Task[_T]] | None = None
+        loop_factory: collections.abc.Callable[[], AbstractEventLoop] | None = None
         ) -> None:
         self._state = _State.CREATED
         self._debug = debug
@@ -87,8 +81,10 @@ class Runner:
         """Shutdown and close event loop."""
         if self._state is not _State.INITIALIZED:
             return
+
+        loop = self._loop
+        assert loop is not None
         try:
-            loop = self._loop
             _cancel_all_tasks(loop)
             loop.run_until_complete(loop.shutdown_asyncgens())
             loop.run_until_complete(loop.shutdown_default_executor())
@@ -116,6 +112,7 @@ class Runner:
                 "Runner.run() cannot be called from a running event loop")
 
         self._lazy_init()
+        assert self._loop is not None
 
         if context is None:
             context = self._context
