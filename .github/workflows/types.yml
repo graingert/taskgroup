@@ -1,0 +1,22 @@
+name: Run pyright.
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install poetry
+        run: pipx install flit
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: flit install
+      - run: echo "$(poetry env info --path)/bin" >> $GITHUB_PATH
+
+      - uses: jakebailey/pyright-action@v1
