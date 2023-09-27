@@ -8,14 +8,21 @@ _SendT = TypeVar("_SendT")
 _ReturnT = TypeVar("_ReturnT", covariant=True)
 
 class _Interceptor(collections.abc.Coroutine[_YieldT, _SendT, _ReturnT]):
-    def __init__(self, coro: collections.abc.Coroutine[_YieldT, _SendT, _ReturnT], context: contextvars.Context):
+    def __init__(
+        self,
+        coro: (
+            collections.abc.Coroutine[_YieldT, _SendT, _ReturnT]
+            | collections.abc.Generator[_YieldT, _SendT, _ReturnT]
+        ),
+        context: contextvars.Context,
+    ):
         self.__coro = coro
         self.__context = context
 
     def send(self, v: _SendT):
         return self.__context.run(self.__coro.send, v)
 
-    def throw(self, e: BaseException | type[BaseException]):
+    def throw(self, e: BaseException):
         return self.__context.run(self.__coro.throw, e)
 
     def __getattr__(self, name):
@@ -23,11 +30,22 @@ class _Interceptor(collections.abc.Coroutine[_YieldT, _SendT, _ReturnT]):
 
 
 class Task(asyncio.Task[_ReturnT]):
-    def __init__(self, coro: Awaitable[_ReturnT], *args, context=None, **kwargs) -> None:
+    def __init__(
+        self,
+        coro: (
+            Awaitable[_ReturnT]
+            | collections.abc.Coroutine[_YieldT, _SendT, _ReturnT]
+            | collections.abc.Generator[_YieldT, _SendT, _ReturnT]
+        ),
+        *args,
+        context=None,
+        **kwargs
+    ) -> None:
         self._num_cancels_requested = 0
         if context is not None:
-            coro = _Interceptor(cast(collections.abc.Coroutine, coro), context)
-        super().__init__(coro, *args, **kwargs)
+            assert isinstance(coro, (collections.abc.Coroutine, collections.abc.Generator))
+            coro = _Interceptor(coro, context)
+        super().__init__(coro, *args, **kwargs)  # type: ignore
 
     def cancel(self, *args: Any, **kwargs: Any) -> bool:
         if not self.done():
