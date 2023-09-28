@@ -8,7 +8,7 @@ authors = [{name = "Thomas Grainger", email = "taskgroup@graingert.co.uk"}]
 license = {file = "LICENSE"}
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
-dependencies = ["exceptiongroup"]
+dependencies = ["exceptiongroup", "typing_extensions>=4.8,<5"]
 
 [project.urls]
 Home = "https://github.com/graingert/taskgroup"

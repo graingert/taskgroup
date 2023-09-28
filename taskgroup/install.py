@@ -1,13 +1,9 @@
-import contextlib
-
 import asyncio
 import collections.abc
 import contextlib
-import functools
 import types
 
 from .tasks import task_factory as _task_factory, Task as _Task
-from . import timeouts
 
 
 UNCANCEL_DONE = object()
