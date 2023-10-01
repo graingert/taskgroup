@@ -141,6 +141,7 @@ class TaskGroup:
                     raise propagate_cancellation_error
 
                 if et is not None and et is not exceptions.CancelledError:
+                    assert self._errors is not None
                     self._errors.append(exc)
 
                 if self._errors:
@@ -148,7 +149,7 @@ class TaskGroup:
                     # cycles (bad for GC); let's not keep a reference to
                     # a bunch of them.
                     errors = self._errors
-                    self._errors.clear()
+                    self._errors = None
 
                     me = BaseExceptionGroup('unhandled errors in a TaskGroup', errors)
                     raise me from None
@@ -206,6 +207,7 @@ class TaskGroup:
         if exc is None:
             return
 
+        assert self._errors is not None
         self._errors.append(exc)
         if self._is_base_error(exc) and self._base_error is None:
             self._base_error = exc
