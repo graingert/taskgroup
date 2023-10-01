@@ -11,8 +11,6 @@ UNCANCEL_DONE = object()
 
 class WaitTaskRescheduled:
     _asyncio_future_blocking = True
-    _add_done_callback = None
-    _abort_func = None
 
     def __init__(self, add_done_callback, abort_func):
         self._add_done_callback = add_done_callback
@@ -39,8 +37,7 @@ def _async_yield(v):
     return (yield v)
 
 
-@collections.abc.Coroutine.register
-class WrapCoro:
+class WrapCoro(collections.abc.Coroutine):
     def __init__(self, coro, context):
         self._coro = coro
         self._context = context
@@ -67,11 +64,6 @@ class WrapCoro:
         return result
 
 
-class NullFuture:
-    def result(self):
-        return None
-
-
 @contextlib.asynccontextmanager
 async def install_uncancel():
     if isinstance(asyncio.current_task(), _Task):
@@ -81,10 +73,11 @@ async def install_uncancel():
 
     context = None
 
+    task = asyncio.current_task()
+    assert task is not None
     async def asyncio_main():
         return await WrapCoro(task.get_coro(), context=context)
 
-    task = asyncio.current_task()
     loop = task.get_loop()
     new_task = _task_factory(loop, asyncio_main())
 

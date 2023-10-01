@@ -7,7 +7,7 @@ import contextlib
 import enum
 import sys
 from types import TracebackType
-from typing import final, Optional, Type, TYPE_CHECKING
+from typing import Union, final, Optional, Type
 
 from asyncio import events
 from asyncio import exceptions
@@ -37,7 +37,7 @@ class Timeout:
     def __init__(self, when: Optional[float]) -> None:
         self._state = _State.CREATED
 
-        self._timeout_handler: Optional[events.TimerHandle] = None
+        self._timeout_handler: Optional[Union[events.TimerHandle, events.Handle]] = None
         self._task: Optional[tasks.Task] = None
         self._when = when
         self._cmgr = self._cmgr_factory()
@@ -119,6 +119,7 @@ class Timeout:
 
     def _on_timeout(self) -> None:
         assert self._state is _State.ENTERED
+        assert self._task is not None
         self._task.cancel()
         self._state = _State.EXPIRING
         # drop the reference early

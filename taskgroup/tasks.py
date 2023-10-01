@@ -30,7 +30,7 @@ class _Interceptor(collections.abc.Coroutine[_YieldT, _SendT, _ReturnT]):
 
 
 class Task(asyncio.Task[_ReturnT]):
-    def __init__(
+    async def __init__(
         self,
         coro: (
             Awaitable[_ReturnT]
@@ -66,5 +66,5 @@ class Task(asyncio.Task[_ReturnT]):
             return coro._Interceptor__coro  # type: ignore
         return coro
 
-def task_factory(loop: asyncio.AbstractEventLoop, coro: collections.abc.Coroutine[Any, Any, _ReturnT], **kwargs: Any) -> Task[_ReturnT]:
+def task_factory(loop: asyncio.AbstractEventLoop, coro: collections.abc.Coroutine[Any, Any, _ReturnT] | collections.abc.Generator[Any, Any, _ReturnT], **kwargs: Any) -> Task[_ReturnT]:
     return Task(coro, loop=loop, **kwargs)

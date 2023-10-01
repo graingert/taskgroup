@@ -15,6 +15,9 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Create virtual environment
+        run: python3 -m venv .venv
+
       - name: Install dependencies
         run: flit install
 

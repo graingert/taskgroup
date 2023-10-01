@@ -169,6 +169,7 @@ class Runner:
         if self._interrupt_count == 1 and not main_task.done():
             main_task.cancel()
             # wakeup loop if it is blocked by select() with long timeout
+            assert self._loop is not None
             self._loop.call_soon_threadsafe(lambda: None)
             return
         raise KeyboardInterrupt()
