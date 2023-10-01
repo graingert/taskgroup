@@ -30,7 +30,7 @@ class _Interceptor(collections.abc.Coroutine[_YieldT, _SendT, _ReturnT]):
 
 
 class Task(asyncio.Task[_ReturnT]):
-    async def __init__(
+    def __init__(
         self,
         coro: (
             Awaitable[_ReturnT]
