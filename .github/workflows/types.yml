@@ -15,8 +15,8 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Create virtual environment
-        run: python3 -m venv .venv
+      - name: Create and activate virtual environment
+        run: python3 -m venv .venv && .venv/bin/activate
 
       - name: Install dependencies
         run: flit install
