@@ -76,7 +76,7 @@ async def install_uncancel():
     task = asyncio.current_task()
     assert task is not None
     async def asyncio_main():
-        return await WrapCoro(task.get_coro(), context=context)
+        return await WrapCoro(task.get_coro(), context=context)  # type: ignore  # see python/typing#1480
 
     loop = task.get_loop()
     new_task = _task_factory(loop, asyncio_main())
