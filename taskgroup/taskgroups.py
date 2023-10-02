@@ -12,14 +12,14 @@ from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
 from collections.abc import AsyncGenerator, Coroutine
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import Any, TypeVar
 
 from exceptiongroup import BaseExceptionGroup
 import contextlib
 from .tasks import task_factory as _task_factory, Task
 from . import install as _install
 
-from typing_extensions import Self, Literal
+from typing_extensions import Self
 
 _T = TypeVar("_T")
 
@@ -141,6 +141,7 @@ class TaskGroup:
                     raise propagate_cancellation_error
 
                 if et is not None and et is not exceptions.CancelledError:
+                    assert self._errors is not None
                     self._errors.append(exc)
 
                 if self._errors:
@@ -167,11 +168,12 @@ class TaskGroup:
             raise RuntimeError(f"TaskGroup {self!r} is finished")
         if self._aborting:
             raise RuntimeError(f"TaskGroup {self!r} is shutting down")
+        assert self._loop is not None
         if context is None:
             task = _task_factory(self._loop, coro)
         else:
             task = _task_factory(self._loop, coro, context=context)
-        tasks._set_task_name(task, name)
+        tasks._set_task_name(task, name)  # type: ignore
         task.add_done_callback(self._on_task_done)
         self._tasks.add(task)
         return task
@@ -205,10 +207,13 @@ class TaskGroup:
         if exc is None:
             return
 
+        assert self._errors is not None
         self._errors.append(exc)
         if self._is_base_error(exc) and self._base_error is None:
             self._base_error = exc
 
+        assert self._parent_task is not None
+        assert self._loop is not None
         if self._parent_task.done():
             # Not sure if this case is possible, but we want to handle
             # it anyways.

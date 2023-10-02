@@ -32,6 +32,7 @@ async def main():
                     tg.create_task(poll_database(db))
                     await asyncio.sleep(1)
 
+        assert task
         print(f"{task.cancelling()=} should be 0")
 
         try:
