@@ -74,21 +74,16 @@ class TaskGroup:
             finally:
                 et, exc, _ = sys.exc_info()
                 self._exiting = True
-                propagate_cancellation_error = None
+                propagate_cancellation_error = exc if et is exceptions.CancelledError else None
 
-                if (exc is not None and
-                        self._is_base_error(exc) and
-                        self._base_error is None):
-                    self._base_error = exc
+            if self._parent_cancel_requested:
+                # If this flag is set we *must* call uncancel().
+                if self._parent_task.uncancel() == 0:
+                    # If there are no pending cancellations left,
+                    # don't propagate CancelledError.
+                    propagate_cancellation_error = None
 
                 if et is not None:
-                    if et is exceptions.CancelledError:
-                        if self._parent_cancel_requested and not self._parent_task.uncancel():
-                            # Do nothing, i.e. swallow the error.
-                            pass
-                        else:
-                            propagate_cancellation_error = exc
-
                     if not self._aborting:
                         # Our parent task is being cancelled:
                         #
@@ -134,7 +129,9 @@ class TaskGroup:
                 if self._base_error is not None:
                     raise self._base_error
 
-                if propagate_cancellation_error is not None:
+                # Propagate CancelledError if there is one, except if there
+                # are other errors -- those have priority.
+                if propagate_cancellation_error and not self._errors:
                     # The wrapping task was cancelled; since we're done with
                     # closing all child tasks, just propagate the cancellation
                     # request now.
@@ -174,8 +171,14 @@ class TaskGroup:
         else:
             task = _task_factory(self._loop, coro, context=context)
         tasks._set_task_name(task, name)  # type: ignore
-        task.add_done_callback(self._on_task_done)
-        self._tasks.add(task)
+        # optimization: Immediately call the done callback if the task is
+        # already done (e.g. if the coro was able to complete eagerly),
+        # and skip scheduling a done callback
+        if task.done():
+            self._on_task_done(task)
+        else:
+            self._tasks.add(task)
+            task.add_done_callback(self._on_task_done)
         return task
 
     # Since Python 3.8 Tasks propagate all exceptions correctly,

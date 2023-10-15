@@ -85,11 +85,12 @@ class Timeout:
             self._task = tasks.current_task()
             if self._task is None:
                 raise RuntimeError("Timeout should be used inside a task")
+            self._cancelling = self._task.cancelling()
             self.reschedule(self._when)
             try:
                 yield self
             finally:
-                exc_type, _, _ = sys.exc_info()
+                exc_type, exc_value, _ = sys.exc_info()
                 assert self._state in (_State.ENTERED, _State.EXPIRING)
 
                 if self._timeout_handler is not None:
@@ -99,10 +100,10 @@ class Timeout:
                 if self._state is _State.EXPIRING:
                     self._state = _State.EXPIRED
 
-                    if self._task.uncancel() == 0 and exc_type is exceptions.CancelledError:
+                    if self._task.uncancel() <= self._cancelling and exc_type is exceptions.CancelledError:
                         # Since there are no outstanding cancel requests, we're
                         # handling this.
-                        raise TimeoutError
+                        raise TimeoutError from exc_value
                 elif self._state is _State.ENTERED:
                     self._state = _State.EXITED
 
