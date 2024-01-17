@@ -2,6 +2,7 @@
 # Copyright © 2001-2022 Python Software Foundation; All Rights Reserved
 # modified to support working on 3.10, custom task_factory installed to
 # support uncancel and contexts
+from __future__ import annotations
 
 __all__ = ('Runner', 'run')
 
