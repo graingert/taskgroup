@@ -1,31 +1,67 @@
-# backported from cpython 3.12 bceb197947bbaebb11e01195bdce4f240fdf9332
-# Copyright © 2001-2022 Python Software Foundation; All Rights Reserved
-# modified to support working on 3.10
+# backported from cpython 3.12.8 2dc476bcb9142cd25d7e1d52392b73a3dcdf1756
+# Copyright © 2001 Python Software Foundation; All Rights Reserved
+# modified to support working on 3.9, differences applied in the TaskGroup
+# subclass, type annotations and assertions added
 
 from __future__ import annotations
-from contextvars import Context
 
 __all__ = ["TaskGroup"]
-
 import sys
+import collections.abc
+from types import TracebackType
 from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
-from collections.abc import AsyncGenerator, Coroutine
-from typing import Any, TypeVar
+from asyncio import futures
+from typing import TypeVar, Optional, Type
+from . import install as _install
+from . import tasks as _tasks
 
 from exceptiongroup import BaseExceptionGroup
+from typing import Any, Union
+from typing_extensions import Self, TypeAlias
 import contextlib
-from .tasks import task_factory as _task_factory, Task
-from . import install as _install
 
-from typing_extensions import Self
 
 _T = TypeVar("_T")
 
+_YieldT_co = TypeVar("_YieldT_co", covariant=True)
+_SendT_contra = TypeVar("_SendT_contra", contravariant=True, default=None)
+_ReturnT_co = TypeVar("_ReturnT_co", covariant=True, default=None)
+_SendT_contra_nd = TypeVar("_SendT_contra_nd", contravariant=True)
+_ReturnT_co_nd = TypeVar("_ReturnT_co_nd", covariant=True)
 
-class TaskGroup:
-    def __init__(self) -> None:
+_T = TypeVar("_T")
+_T_co = TypeVar("_T_co", covariant=True)
+_TaskYieldType: TypeAlias = Optional[futures.Future[object]]
+
+if sys.version_info >= (3, 12):
+    _TaskCompatibleCoro: TypeAlias = collections.abc.Coroutine[Any, Any, _T_co]
+else:
+    _TaskCompatibleCoro: TypeAlias = Union[
+        collections.abc.Generator[_TaskYieldType, None, _T_co],
+        collections.abc.Coroutine[Any, Any, _T_co],
+    ]
+
+
+class _TaskGroup:
+    """Asynchronous context manager for managing groups of tasks.
+
+    Example use:
+
+        async with asyncio.TaskGroup() as group:
+            task1 = group.create_task(some_coroutine(...))
+            task2 = group.create_task(other_coroutine(...))
+        print("Both tasks have completed now.")
+
+    All tasks are awaited when the context manager exits.
+
+    Any exceptions other than `asyncio.CancelledError` raised within
+    a task will cancel all remaining tasks and wait for them to exit.
+    The exceptions are then combined and raised as an `ExceptionGroup`.
+    """
+
+    def __init__(self):
         self._entered = False
         self._exiting = False
         self._aborting = False
@@ -36,7 +72,6 @@ class TaskGroup:
         self._errors = []
         self._base_error = None
         self._on_completed_fut = None
-        self._cmgr = self._cmgr_factory()
 
     def __repr__(self) -> str:
         info = [""]
@@ -52,131 +87,143 @@ class TaskGroup:
         info_str = " ".join(info)
         return f"<TaskGroup{info_str}>"
 
-    @contextlib.asynccontextmanager
-    async def _cmgr_factory(self) -> AsyncGenerator[Self, None]:
+    async def __aenter__(self) -> Self:
         if self._entered:
-            raise RuntimeError(f"TaskGroup {self!r} has been already entered")
-        self._entered = True
-
+            raise RuntimeError(f"TaskGroup {self!r} has already been entered")
         if self._loop is None:
             self._loop = events.get_running_loop()
+        self._parent_task = tasks.current_task(self._loop)
+        if self._parent_task is None:
+            raise RuntimeError(f"TaskGroup {self!r} cannot determine the parent task")
+        self._entered = True
 
-        async with _install.install_uncancel():
-            self._parent_task = tasks.current_task(self._loop)
-            if self._parent_task is None:
-                raise RuntimeError(
-                    f"TaskGroup {self!r} cannot determine the parent task"
-                )
+        return self
+
+    async def __aexit__(
+        self,
+        et: Optional[Type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        tb = None  # noqa: F841
+        try:
+            return await self._aexit(et, exc)
+        finally:
+            # Exceptions are heavy objects that can have object
+            # cycles (bad for GC); let's not keep a reference to
+            # a bunch of them. It would be nicer to use a try/finally
+            # in __aexit__ directly but that introduced some diff noise
+            self._parent_task = None
+            self._errors = None
+            self._base_error = None
+            exc = None
+
+    async def _aexit(
+        self,
+        et: Optional[Type[BaseException]],
+        exc: Optional[BaseException],
+    ) -> Optional[bool]:
+        self._exiting = True
+
+        if exc is not None and self._is_base_error(exc) and self._base_error is None:
+            self._base_error = exc
+
+        propagate_cancellation_error = exc if et is exceptions.CancelledError else None
+        if self._parent_cancel_requested:
+            # If this flag is set we *must* call uncancel().
+            if self._parent_task.uncancel() == 0:
+                # If there are no pending cancellations left,
+                # don't propagate CancelledError.
+                propagate_cancellation_error = None
+
+        if et is not None:
+            if not self._aborting:
+                # Our parent task is being cancelled:
+                #
+                #    async with TaskGroup() as g:
+                #        g.create_task(...)
+                #        await ...  # <- CancelledError
+                #
+                # or there's an exception in "async with":
+                #
+                #    async with TaskGroup() as g:
+                #        g.create_task(...)
+                #        1 / 0
+                #
+                self._abort()
+
+        # We use while-loop here because "self._on_completed_fut"
+        # can be cancelled multiple times if our parent task
+        # is being cancelled repeatedly (or even once, when
+        # our own cancellation is already in progress)
+        while self._tasks:
+            if self._on_completed_fut is None:
+                self._on_completed_fut = self._loop.create_future()
 
             try:
-                yield self
+                await self._on_completed_fut
+            except exceptions.CancelledError as ex:
+                if not self._aborting:
+                    # Our parent task is being cancelled:
+                    #
+                    #    async def wrapper():
+                    #        async with TaskGroup() as g:
+                    #            g.create_task(foo)
+                    #
+                    # "wrapper" is being cancelled while "foo" is
+                    # still running.
+                    propagate_cancellation_error = ex
+                    self._abort()
+
+            self._on_completed_fut = None
+
+        assert not self._tasks
+
+        if self._base_error is not None:
+            try:
+                raise self._base_error
             finally:
-                et, exc, _ = sys.exc_info()
-                self._exiting = True
-                propagate_cancellation_error = (
-                    exc if et is exceptions.CancelledError else None
-                )
+                exc = None
 
-            if self._parent_cancel_requested:
-                # If this flag is set we *must* call uncancel().
-                if self._parent_task.uncancel() == 0:
-                    # If there are no pending cancellations left,
-                    # don't propagate CancelledError.
-                    propagate_cancellation_error = None
-
-                if et is not None:
-                    if not self._aborting:
-                        # Our parent task is being cancelled:
-                        #
-                        #    async with TaskGroup() as g:
-                        #        g.create_task(...)
-                        #        await ...  # <- CancelledError
-                        #
-                        # or there's an exception in "async with":
-                        #
-                        #    async with TaskGroup() as g:
-                        #        g.create_task(...)
-                        #        1 / 0
-                        #
-                        self._abort()
-
-                # We use while-loop here because "self._on_completed_fut"
-                # can be cancelled multiple times if our parent task
-                # is being cancelled repeatedly (or even once, when
-                # our own cancellation is already in progress)
-                while self._tasks:
-                    if self._on_completed_fut is None:
-                        self._on_completed_fut = self._loop.create_future()
-
-                    try:
-                        await self._on_completed_fut
-                    except exceptions.CancelledError as ex:
-                        if not self._aborting:
-                            # Our parent task is being cancelled:
-                            #
-                            #    async def wrapper():
-                            #        async with TaskGroup() as g:
-                            #            g.create_task(foo)
-                            #
-                            # "wrapper" is being cancelled while "foo" is
-                            # still running.
-                            propagate_cancellation_error = ex
-                            self._abort()
-
-                    self._on_completed_fut = None
-
-                assert not self._tasks
-
-                if self._base_error is not None:
-                    raise self._base_error
-
-                # Propagate CancelledError if there is one, except if there
-                # are other errors -- those have priority.
-                if propagate_cancellation_error and not self._errors:
-                    # The wrapping task was cancelled; since we're done with
-                    # closing all child tasks, just propagate the cancellation
-                    # request now.
+        # Propagate CancelledError if there is one, except if there
+        # are other errors -- those have priority.
+        try:
+            if propagate_cancellation_error and not self._errors:
+                try:
                     raise propagate_cancellation_error
+                finally:
+                    exc = None
+        finally:
+            propagate_cancellation_error = None
 
-                if et is not None and et is not exceptions.CancelledError:
-                    assert self._errors is not None
-                    self._errors.append(exc)
+        if et is not None and et is not exceptions.CancelledError:
+            self._errors.append(exc)
 
-                if self._errors:
-                    # Exceptions are heavy objects that can have object
-                    # cycles (bad for GC); let's not keep a reference to
-                    # a bunch of them.
-                    errors = self._errors
-                    self._errors = None
+        if self._errors:
+            try:
+                raise BaseExceptionGroup(
+                    "unhandled errors in a TaskGroup",
+                    self._errors,
+                ) from None
+            finally:
+                exc = None
 
-                    me = BaseExceptionGroup("unhandled errors in a TaskGroup", errors)
-                    raise me from None
+    def create_task(self, coro, *, name=None, context=None):
+        """Create a new task in this group and return it.
 
-    async def __aenter__(self) -> Self:
-        return await self._cmgr.__aenter__()
-
-    async def __aexit__(self, *exc_info) -> bool | None:
-        return await self._cmgr.__aexit__(*exc_info)  # type: ignore
-
-    def create_task(
-        self,
-        coro: Coroutine[Any, Any, _T],
-        *,
-        name: str | None = None,
-        context: Context | None = None,
-    ) -> Task[_T]:
+        Similar to `asyncio.create_task`.
+        """
         if not self._entered:
             raise RuntimeError(f"TaskGroup {self!r} has not been entered")
         if self._exiting and not self._tasks:
             raise RuntimeError(f"TaskGroup {self!r} is finished")
         if self._aborting:
             raise RuntimeError(f"TaskGroup {self!r} is shutting down")
-        assert self._loop is not None
         if context is None:
-            task = _task_factory(self._loop, coro)
+            task = self._loop.create_task(coro)
         else:
-            task = _task_factory(self._loop, coro, context=context)
-        tasks._set_task_name(task, name)  # type: ignore
+            task = self._loop.create_task(coro, context=context)
+        tasks._set_task_name(task, name)
         # optimization: Immediately call the done callback if the task is
         # already done (e.g. if the coro was able to complete eagerly),
         # and skip scheduling a done callback
@@ -216,13 +263,10 @@ class TaskGroup:
         if exc is None:
             return
 
-        assert self._errors is not None
         self._errors.append(exc)
         if self._is_base_error(exc) and self._base_error is None:
             self._base_error = exc
 
-        assert self._parent_task is not None
-        assert self._loop is not None
         if self._parent_task.done():
             # Not sure if this case is possible, but we want to handle
             # it anyways.
@@ -258,3 +302,51 @@ class TaskGroup:
             self._abort()
             self._parent_cancel_requested = True
             self._parent_task.cancel()
+
+
+class TaskGroup(_TaskGroup):
+    __stack: contextlib.AsyncExitStack
+
+    def create_task(
+        self, coro: _TaskCompatibleCoro[_T_co], *, name=None, context=None
+    ) -> _tasks.Task[_T_co]:
+        """Create a new task in this group and return it.
+
+        Similar to `asyncio.create_task`.
+        """
+        if not self._entered:
+            raise RuntimeError(f"TaskGroup {self!r} has not been entered")
+        if self._exiting and not self._tasks:
+            raise RuntimeError(f"TaskGroup {self!r} is finished")
+        if self._aborting:
+            raise RuntimeError(f"TaskGroup {self!r} is shutting down")
+        if context is None:
+            task = _tasks.task_factory(self._loop, coro)
+        else:
+            task = _tasks.task_factory(self._loop, coro, context=context)
+        tasks._set_task_name(task, name)
+        # optimization: Immediately call the done callback if the task is
+        # already done (e.g. if the coro was able to complete eagerly),
+        # and skip scheduling a done callback
+        if task.done():
+            self._on_task_done(task)
+        else:
+            self._tasks.add(task)
+            task.add_done_callback(self._on_task_done)
+        return task
+
+    async def __aenter__(self) -> Self:
+        async with contextlib.AsyncExitStack() as stack:
+            await stack.enter_async_context(_install.install_uncancel())
+            v = await super().__aenter__()
+            stack.push_async_exit(super().__aexit__)
+            self.__stack = stack.pop_all()
+            return v
+
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Optional[bool]:
+        return await self.__stack.__aexit__(exc_type, exc_val, exc_tb)

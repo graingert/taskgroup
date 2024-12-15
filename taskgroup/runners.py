@@ -1,10 +1,12 @@
-# backported from cpython 3.12 bceb197947bbaebb11e01195bdce4f240fdf9332
-# Copyright © 2001-2022 Python Software Foundation; All Rights Reserved
-# modified to support working on 3.10, custom task_factory installed to
+# backported from cpython 3.12.8 2dc476bcb9142cd25d7e1d52392b73a3dcdf1756
+# Copyright © 2001 Python Software Foundation; All Rights Reserved
+# modified to support working on 3.9, custom task_factory installed to
 # support uncancel and contexts
 from __future__ import annotations
 
 __all__ = ("Runner", "run")
+
+import sys
 
 import collections.abc
 import contextvars
@@ -12,7 +14,7 @@ import enum
 import functools
 import signal
 import threading
-from asyncio import AbstractEventLoop, coroutines, events, exceptions, tasks
+from asyncio import AbstractEventLoop, coroutines, events, exceptions, tasks, constants
 from typing import Any, TypeVar, final
 
 from typing_extensions import Self
@@ -89,7 +91,12 @@ class Runner:
         try:
             _cancel_all_tasks(loop)
             loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.run_until_complete(loop.shutdown_default_executor())
+            if sys.version_info >= (3, 12):
+                loop.run_until_complete(
+                    loop.shutdown_default_executor(constants.THREAD_JOIN_TIMEOUT)
+                )
+            else:
+                loop.run_until_complete(loop.shutdown_default_executor())
         finally:
             if self._set_event_loop:
                 events.set_event_loop(None)
@@ -143,8 +150,6 @@ class Runner:
 
         self._interrupt_count = 0
         try:
-            if self._set_event_loop:
-                events.set_event_loop(self._loop)
             return self._loop.run_until_complete(task)
         except exceptions.CancelledError:
             if self._interrupt_count > 0:
@@ -184,20 +189,17 @@ class Runner:
         if self._interrupt_count == 1 and not main_task.done():
             main_task.cancel()
             # wakeup loop if it is blocked by select() with long timeout
-            assert self._loop is not None
             self._loop.call_soon_threadsafe(lambda: None)
             return
         raise KeyboardInterrupt()
 
 
-def run(
-    main: collections.abc.Coroutine[Any, Any, _T], *, debug: bool | None = None
-) -> _T:
+def run(main, *, debug=None, loop_factory=None):
     """Execute the coroutine and return the result.
 
     This function runs the passed coroutine, taking care of
-    managing the asyncio event loop and finalizing asynchronous
-    generators.
+    managing the asyncio event loop, finalizing asynchronous
+    generators and closing the default executor.
 
     This function cannot be called when another asyncio event loop is
     running in the same thread.
@@ -207,6 +209,10 @@ def run(
     This function always creates a new event loop and closes it at the end.
     It should be used as a main entry point for asyncio programs, and should
     ideally only be called once.
+
+    The executor is given a timeout duration of 5 minutes to shutdown.
+    If the executor hasn't finished within that duration, a warning is
+    emitted and the executor is closed.
 
     Example:
 
@@ -220,7 +226,7 @@ def run(
         # fail fast with short traceback
         raise RuntimeError("asyncio.run() cannot be called from a running event loop")
 
-    with Runner(debug=debug) as runner:
+    with Runner(debug=debug, loop_factory=loop_factory) as runner:
         return runner.run(main)
 
 
