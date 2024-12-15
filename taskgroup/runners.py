@@ -93,7 +93,7 @@ class Runner:
             loop.run_until_complete(loop.shutdown_asyncgens())
             if sys.version_info >= (3, 12):
                 loop.run_until_complete(
-                    loop.shutdown_default_executor(constants.THREAD_JOIN_TIMEOUT)
+                    loop.shutdown_default_executor(constants.THREAD_JOIN_TIMEOUT)  # type: ignore
                 )
             else:
                 loop.run_until_complete(loop.shutdown_default_executor())
@@ -185,6 +185,7 @@ class Runner:
         self._state = _State.INITIALIZED
 
     def _on_sigint(self, signum, frame, main_task):
+        assert self._loop is not None
         self._interrupt_count += 1
         if self._interrupt_count == 1 and not main_task.done():
             main_task.cancel()

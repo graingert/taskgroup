@@ -13,13 +13,14 @@ from asyncio import events
 from asyncio import exceptions
 from asyncio import tasks
 from asyncio import futures
+import asyncio
 from typing import TypeVar, Optional, Type
 from . import install as _install
 from . import tasks as _tasks
 
 from exceptiongroup import BaseExceptionGroup
 from typing import Any, Union
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self, TypeAlias, Literal
 import contextlib
 
 
@@ -65,13 +66,13 @@ class _TaskGroup:
         self._entered = False
         self._exiting = False
         self._aborting = False
-        self._loop = None
-        self._parent_task = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._parent_task: tasks.Task[object] | None = None
         self._parent_cancel_requested = False
-        self._tasks = set()
-        self._errors = []
-        self._base_error = None
-        self._on_completed_fut = None
+        self._tasks: set[tasks.Task[object]] = set()
+        self._errors: list[BaseException] | None = []
+        self._base_error: BaseException | None = None
+        self._on_completed_fut: futures.Future[Literal[True]] | None = None
 
     def __repr__(self) -> str:
         info = [""]
@@ -123,6 +124,9 @@ class _TaskGroup:
         et: Optional[Type[BaseException]],
         exc: Optional[BaseException],
     ) -> Optional[bool]:
+        assert self._parent_task is not None
+        assert self._loop is not None
+        assert self._errors is not None
         self._exiting = True
 
         if exc is not None and self._is_base_error(exc) and self._base_error is None:
@@ -197,6 +201,7 @@ class _TaskGroup:
             propagate_cancellation_error = None
 
         if et is not None and et is not exceptions.CancelledError:
+            assert exc is not None
             self._errors.append(exc)
 
         if self._errors:
@@ -219,11 +224,12 @@ class _TaskGroup:
             raise RuntimeError(f"TaskGroup {self!r} is finished")
         if self._aborting:
             raise RuntimeError(f"TaskGroup {self!r} is shutting down")
+        assert self._loop is not None
         if context is None:
             task = self._loop.create_task(coro)
         else:
             task = self._loop.create_task(coro, context=context)
-        tasks._set_task_name(task, name)
+        tasks._set_task_name(task, name)  # type: ignore
         # optimization: Immediately call the done callback if the task is
         # already done (e.g. if the coro was able to complete eagerly),
         # and skip scheduling a done callback
@@ -250,6 +256,9 @@ class _TaskGroup:
                 t.cancel()
 
     def _on_task_done(self, task):
+        assert self._errors is not None
+        assert self._parent_task is not None
+        assert self._loop is not None
         self._tasks.discard(task)
 
         if self._on_completed_fut is not None and not self._tasks:
@@ -320,11 +329,12 @@ class TaskGroup(_TaskGroup):
             raise RuntimeError(f"TaskGroup {self!r} is finished")
         if self._aborting:
             raise RuntimeError(f"TaskGroup {self!r} is shutting down")
+        assert self._loop is not None
         if context is None:
             task = _tasks.task_factory(self._loop, coro)
         else:
             task = _tasks.task_factory(self._loop, coro, context=context)
-        tasks._set_task_name(task, name)
+        tasks._set_task_name(task, name)  # type: ignore
         # optimization: Immediately call the done callback if the task is
         # already done (e.g. if the coro was able to complete eagerly),
         # and skip scheduling a done callback
@@ -338,10 +348,10 @@ class TaskGroup(_TaskGroup):
     async def __aenter__(self) -> Self:
         async with contextlib.AsyncExitStack() as stack:
             await stack.enter_async_context(_install.install_uncancel())
-            v = await super().__aenter__()
+            await super().__aenter__()
             stack.push_async_exit(super().__aexit__)
             self.__stack = stack.pop_all()
-            return v
+        return self
 
     async def __aexit__(
         self,

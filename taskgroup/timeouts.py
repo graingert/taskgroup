@@ -46,7 +46,7 @@ class _Timeout:
         """
         self._state = _State.CREATED
 
-        self._timeout_handler: Optional[events.TimerHandle] = None
+        self._timeout_handler: Optional[events.Handle] = None
         self._task: Optional[tasks.Task] = None
         self._when = when
 
@@ -89,7 +89,7 @@ class _Timeout:
         info_str = " ".join(info)
         return f"<Timeout [{self._state.value}]{info_str}>"
 
-    async def __aenter__(self) -> "Timeout":
+    async def __aenter__(self) -> Self:
         if self._state is not _State.CREATED:
             raise RuntimeError("Timeout has already been entered")
         task = tasks.current_task()
@@ -117,7 +117,7 @@ class _Timeout:
             self._state = _State.EXPIRED
 
             if (
-                self._task.uncancel() <= self._cancelling
+                self._task.uncancel() <= self._cancelling  # type: ignore
                 and exc_type is exceptions.CancelledError
             ):
                 # Since there are no new cancel requests, we're
@@ -129,6 +129,7 @@ class _Timeout:
         return None
 
     def _on_timeout(self) -> None:
+        assert self._task is not None
         assert self._state is _State.ENTERED
         self._task.cancel()
         self._state = _State.EXPIRING
@@ -143,10 +144,10 @@ class Timeout(_Timeout):
     async def __aenter__(self) -> Self:
         async with contextlib.AsyncExitStack() as stack:
             await stack.enter_async_context(_install.install_uncancel())
-            v = await super().__aenter__()
+            await super().__aenter__()
             stack.push_async_exit(super().__aexit__)
             self.__stack = stack.pop_all()
-            return v
+        return self
 
     async def __aexit__(
         self,
