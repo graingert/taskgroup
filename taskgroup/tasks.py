@@ -4,7 +4,7 @@ import asyncio
 import collections.abc
 import contextvars
 from typing import Any, Optional, Union
-from typing_extensions import TypeAlias, TypeVar
+from typing_extensions import TypeAlias, TypeVar, Self
 import sys
 
 _YieldT_co = TypeVar("_YieldT_co", covariant=True)
@@ -49,6 +49,9 @@ class _Interceptor(
 
     def __getattr__(self, name):
         return getattr(self.__coro, name)
+
+    def __await__(self) -> Self:
+        return self
 
     def close(self) -> None:
         super().close()
