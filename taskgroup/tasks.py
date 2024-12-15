@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import collections.abc
 import contextvars
-from typing import Any, TypeAlias
-from typing_extensions import TypeVar
+from typing import Any, Optional, Union
+from typing_extensions import TypeAlias, TypeVar
 import sys
 
 _YieldT_co = TypeVar("_YieldT_co", covariant=True)
@@ -15,15 +15,15 @@ _ReturnT_co_nd = TypeVar("_ReturnT_co_nd", covariant=True)
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
-_TaskYieldType: TypeAlias = asyncio.Future[object] | None
+_TaskYieldType: TypeAlias = Optional[asyncio.Future[object]]
 
 if sys.version_info >= (3, 12):
     _TaskCompatibleCoro: TypeAlias = collections.abc.Coroutine[Any, Any, _T_co]
 else:
-    _TaskCompatibleCoro: TypeAlias = (
-        collections.abc.Generator[_TaskYieldType, None, _T_co]
-        | collections.abc.Coroutine[Any, Any, _T_co]
-    )
+    _TaskCompatibleCoro: TypeAlias = Union[
+        collections.abc.Generator[_TaskYieldType, None, _T_co],
+        collections.abc.Coroutine[Any, Any, _T_co],
+    ]
 
 
 class _Interceptor(
