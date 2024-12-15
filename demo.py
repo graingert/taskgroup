@@ -47,3 +47,4 @@ async def main():
 
 
 asyncio.run(main())
+taskgroup.run(main())
