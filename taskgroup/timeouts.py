@@ -2,6 +2,7 @@
 # Copyright © 2001 Python Software Foundation; All Rights Reserved
 # modified to support working on 3.9, differences applied in the Timeout
 # subclass
+from __future__ import annotations
 
 import contextlib
 import enum

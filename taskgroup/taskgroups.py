@@ -15,13 +15,13 @@ from asyncio import tasks
 from asyncio import futures
 import asyncio
 import contextvars
-from typing import TypeVar, Optional, Type
+from typing import Optional, Type
 from . import install as _install
 from . import tasks as _tasks
 
 from exceptiongroup import BaseExceptionGroup
 from typing import Any, Union
-from typing_extensions import Self, TypeAlias, Literal
+from typing_extensions import Self, TypeAlias, Literal, TypeVar
 import contextlib
 
 
