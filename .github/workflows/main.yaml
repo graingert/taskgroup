@@ -16,12 +16,33 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
+          allow-prereleases: true
+          cache: pip
+          cache-dependency-path: pyproject.toml
           python-version: "3.x"
 
       - name: Install
         run: pip install .
 
       - uses: jakebailey/pyright-action@v2
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", pypy-3.10]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: pip install .
+      - name: Test
+        run: python demo.py
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -32,6 +53,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
+          allow-prereleases: true
+          cache: pip
+          cache-dependency-path: pyproject.toml
           python-version: "3.x"
 
       - name: build
@@ -72,6 +96,7 @@ jobs:
     needs:
       - build
       - typecheck
+      - test
 
     runs-on: ubuntu-latest
 

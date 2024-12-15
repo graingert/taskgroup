@@ -33,6 +33,14 @@ run(main())
 ```
 
 # changelog
+## 0.2.0
+### What's Changed
+* add readme and changelog by @graingert in https://github.com/graingert/taskgroup/pull/21
+* Add link to PyPI by @graingert in https://github.com/graingert/taskgroup/pull/22
+* changes from 3.12.8, add a smoke test, make uncancel installation simpler by @graingert in https://github.com/graingert/taskgroup/pull/23
+
+
+**Full Changelog**: https://github.com/graingert/taskgroup/compare/0.1.1...0.2.0
 
 ## 0.1.1
 ### What's Changed
