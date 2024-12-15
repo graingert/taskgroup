@@ -14,6 +14,7 @@ from asyncio import exceptions
 from asyncio import tasks
 from asyncio import futures
 import asyncio
+import contextvars
 from typing import TypeVar, Optional, Type
 from . import install as _install
 from . import tasks as _tasks
@@ -62,7 +63,7 @@ class _TaskGroup:
     The exceptions are then combined and raised as an `ExceptionGroup`.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._entered = False
         self._exiting = False
         self._aborting = False
@@ -213,7 +214,13 @@ class _TaskGroup:
             finally:
                 exc = None
 
-    def create_task(self, coro, *, name=None, context=None):
+    def create_task(
+        self,
+        coro: _TaskCompatibleCoro[_T_co],
+        *,
+        name: str | None = None,
+        context: contextvars.Context | None = None,
+    ) -> tasks.Task[_T_co]:
         """Create a new task in this group and return it.
 
         Similar to `asyncio.create_task`.
@@ -255,7 +262,7 @@ class _TaskGroup:
             if not t.done():
                 t.cancel()
 
-    def _on_task_done(self, task):
+    def _on_task_done(self, task: tasks.Task[object]) -> None:
         assert self._errors is not None
         assert self._parent_task is not None
         assert self._loop is not None
@@ -317,7 +324,11 @@ class TaskGroup(_TaskGroup):
     __stack: contextlib.AsyncExitStack
 
     def create_task(
-        self, coro: _TaskCompatibleCoro[_T_co], *, name=None, context=None
+        self,
+        coro: _TaskCompatibleCoro[_T_co],
+        *,
+        name: str | None = None,
+        context: contextvars.Context | None = None,
     ) -> _tasks.Task[_T_co]:
         """Create a new task in this group and return it.
 
