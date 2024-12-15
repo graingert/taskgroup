@@ -1,4 +1,4 @@
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/taskgroup)](https://pypi.org/project/taskgroup/)
+[![PyPI - Version](https://img.shields.io/pypi/v/taskgroup)](https://pypi.org/project/taskgroup/)
 
 # taskgroup
 
