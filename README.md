@@ -1,3 +1,5 @@
+[![PyPI - Version](https://img.shields.io/pypi/v/taskgroup)](https://pypi.org/project/taskgroup/)
+
 # taskgroup
 
 a backport of asyncio.TaskGroup, asyncio.Runner and asyncio.timeout
