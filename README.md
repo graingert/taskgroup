@@ -33,6 +33,13 @@ run(main())
 ```
 
 # changelog
+## 0.2.1
+### What's Changed
+* make _Interceptor not abstract by @graingert in https://github.com/graingert/taskgroup/pull/25
+
+
+**Full Changelog**: https://github.com/graingert/taskgroup/compare/0.2.0...0.2.1
+
 ## 0.2.0
 ### What's Changed
 * add readme and changelog by @graingert in https://github.com/graingert/taskgroup/pull/21
