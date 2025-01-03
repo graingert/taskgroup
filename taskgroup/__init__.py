@@ -2,7 +2,7 @@
 backport of asyncio.TaskGroup, asyncio.Runner and asyncio.timeout
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 __all__ = ["run", "Runner", "TaskGroup", "Timeout", "timeout", "timeout_at"]
 
