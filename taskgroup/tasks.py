@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import collections.abc
 import contextvars
-from typing import Any, Union, TYPE_CHECKING, Generic
+from typing import Any, Optional, Union
 from typing_extensions import TypeAlias, TypeVar, Self
 import sys
-
-if sys.version_info >= (3, 9):
-    from collections.abc import Generator, Coroutine, Awaitable
-else:
-    from typing import Generator, Coroutine, Awaitable
 
 _YieldT_co = TypeVar("_YieldT_co", covariant=True)
 _SendT_contra = TypeVar("_SendT_contra", contravariant=True, default=None)
@@ -19,30 +15,26 @@ _ReturnT_co_nd = TypeVar("_ReturnT_co_nd", covariant=True)
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
-_TaskYieldType: TypeAlias = "asyncio.Future[object] | None"
+_TaskYieldType: TypeAlias = Optional[asyncio.Future[object]]
 
 if sys.version_info >= (3, 12):
-    _TaskCompatibleCoro: TypeAlias = Coroutine[Any, Any, _T_co]
-elif sys.version_info >= (3, 9):
-    _TaskCompatibleCoro: TypeAlias = Union[
-        Generator[_TaskYieldType, None, _T_co],
-        Coroutine[Any, Any, _T_co],
-    ]
+    _TaskCompatibleCoro: TypeAlias = collections.abc.Coroutine[Any, Any, _T_co]
 else:
-    _TaskCompatibleCoro: TypeAlias = (
-        "Generator[_TaskYieldType, None, _T_co] | Awaitable[_T_co]"
-    )
+    _TaskCompatibleCoro: TypeAlias = Union[
+        collections.abc.Generator[_TaskYieldType, None, _T_co],
+        collections.abc.Coroutine[Any, Any, _T_co],
+    ]
 
 
 class _Interceptor(
-    Generator[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
-    Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
+    collections.abc.Generator[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
+    collections.abc.Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
 ):
     def __init__(
         self,
         coro: (
-            Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd]
-            | Generator[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd]
+            collections.abc.Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd]
+            | collections.abc.Generator[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd]
         ),
         context: contextvars.Context,
     ):
@@ -65,21 +57,7 @@ class _Interceptor(
         super().close()
 
 
-if TYPE_CHECKING:
-
-    class _Task(asyncio.Task[_T_co]):
-        pass
-
-
-elif sys.version_info >= (3, 9):
-    _Task = asyncio.Task
-else:
-
-    class _Task(asyncio.Task, Generic[_T_co]):
-        pass
-
-
-class Task(_Task[_T_co]):
+class Task(asyncio.Task[_T_co]):
     def __init__(
         self, coro: _TaskCompatibleCoro[_T_co], *args, context=None, **kwargs
     ) -> None:
