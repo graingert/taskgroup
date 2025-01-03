@@ -33,6 +33,17 @@ run(main())
 ```
 
 # changelog
+## 0.2.2
+### What's Changed
+* update note about which version we backported from by @graingert in https://github.com/graingert/taskgroup/pull/27
+* [pre-commit.ci] pre-commit autoupdate by @pre-commit-ci in https://github.com/graingert/taskgroup/pull/28
+* restore support for 3.8 by @graingert in https://github.com/graingert/taskgroup/pull/30
+
+### New Contributors
+* @pre-commit-ci made their first contribution in https://github.com/graingert/taskgroup/pull/28
+
+**Full Changelog**: https://github.com/graingert/taskgroup/compare/0.2.1...0.2.2
+
 ## 0.2.1
 ### What's Changed
 * make _Interceptor not abstract by @graingert in https://github.com/graingert/taskgroup/pull/25
