@@ -95,7 +95,7 @@ class Runner:
                 loop.run_until_complete(
                     loop.shutdown_default_executor(constants.THREAD_JOIN_TIMEOUT)  # type: ignore
                 )
-            else:
+            elif sys.version_info >= (3, 9):
                 loop.run_until_complete(loop.shutdown_default_executor())
         finally:
             if self._set_event_loop:

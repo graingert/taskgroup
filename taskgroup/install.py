@@ -1,6 +1,6 @@
+import sys
 import contextvars
 import asyncio
-import collections.abc
 import contextlib
 import types
 from typing import cast
@@ -8,6 +8,11 @@ from typing import cast
 from .tasks import task_factory as _task_factory, Task as _Task
 
 from typing_extensions import Self, TypeVar
+
+if sys.version_info >= (3, 9):
+    from collections.abc import Generator, Coroutine
+else:
+    from typing import Generator, Coroutine
 
 
 UNCANCEL_DONE = object()
@@ -49,12 +54,12 @@ _ReturnT_co_nd = TypeVar("_ReturnT_co_nd", covariant=True)
 
 
 class WrapCoro(
-    collections.abc.Generator[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
-    collections.abc.Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
+    Generator[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
+    Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
 ):
     def __init__(
         self,
-        coro: collections.abc.Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
+        coro: Coroutine[_YieldT_co, _SendT_contra_nd, _ReturnT_co_nd],
         context: contextvars.Context,
     ):
         self._coro = coro

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 __all__ = ["TaskGroup"]
 import sys
-import collections.abc
 from types import TracebackType
 from asyncio import events
 from asyncio import exceptions
@@ -24,6 +23,11 @@ from typing import Any, Union
 from typing_extensions import Self, TypeAlias, Literal, TypeVar
 import contextlib
 
+if sys.version_info >= (3, 9):
+    from collections.abc import Generator, Coroutine, Awaitable
+else:
+    from typing import Generator, Coroutine, Awaitable
+
 
 _T = TypeVar("_T")
 
@@ -35,15 +39,19 @@ _ReturnT_co_nd = TypeVar("_ReturnT_co_nd", covariant=True)
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)
-_TaskYieldType: TypeAlias = Optional[futures.Future[object]]
+_TaskYieldType: TypeAlias = "futures.Future[object] | None"
 
 if sys.version_info >= (3, 12):
-    _TaskCompatibleCoro: TypeAlias = collections.abc.Coroutine[Any, Any, _T_co]
-else:
+    _TaskCompatibleCoro: TypeAlias = Coroutine[Any, Any, _T_co]
+elif sys.version_info >= (3, 9):
     _TaskCompatibleCoro: TypeAlias = Union[
-        collections.abc.Generator[_TaskYieldType, None, _T_co],
-        collections.abc.Coroutine[Any, Any, _T_co],
+        Generator[_TaskYieldType, None, _T_co],
+        Coroutine[Any, Any, _T_co],
     ]
+else:
+    _TaskCompatibleCoro: TypeAlias = (
+        "Generator[_TaskYieldType, None, _T_co] | Awaitable[_T_co]"
+    )
 
 
 class _TaskGroup:
