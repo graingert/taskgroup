@@ -10,7 +10,7 @@ classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
 dependencies = ["exceptiongroup", "typing_extensions>=4.12.2,<5"]
 readme = "README.md"
-requires_python = ">=3.8"
+requires_python = ">=3.9"
 
 [project.urls]
 Home = "https://github.com/graingert/taskgroup"
