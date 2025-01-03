@@ -7,7 +7,7 @@ a backport of asyncio.TaskGroup, asyncio.Runner and asyncio.timeout
 ## background
 
 This is a backport of the TaskGroup, Runner and timeout code from
-Python 3.12.8 to Python 3.9, Python 3.10 and Python 3.11.
+Python 3.12.8 to Python 3.8, Python 3.9, Python 3.10 and Python 3.11.
 
 ## operation
 
