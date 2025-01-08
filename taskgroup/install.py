@@ -1,9 +1,8 @@
 import sys
 import contextvars
 import asyncio
-import contextlib
 import types
-from typing import cast
+from typing import cast, Optional, Type
 
 from .tasks import task_factory as _task_factory, Task as _Task
 
@@ -90,39 +89,71 @@ class WrapCoro(
         super().close()
 
 
-@contextlib.asynccontextmanager
-async def install_uncancel():
-    if isinstance(asyncio.current_task(), _Task):
-        # already installed
-        yield
-        return
+MISNESTING_ADVICE = """
+This is probably a bug in your code, that has caused taskgroup's internal state to
+become corrupted.
 
-    context = None
+Typically this is caused by one of the following:
+  - yielding within a generator or async generator that's opened a Timeout
+    or TaskGroup (unless the generator is a @contextmanager or
+    @asynccontextmanager); see https://github.com/python-trio/trio/issues/638
+  - manually calling __aenter__ or __aexit__ on the TaskGroup or Timeout object
+    doing so correctly is difficult and you should use @[async]contextmanager
+    instead, or maybe [Async]ExitStack
+  - using [Async]ExitStack to interleave the entries/exits of Timeouts
+    and/or TaskGroups in a way that couldn't be achieved by some nesting of
+    'with' and 'async with' blocks
+  - using the low-level coroutine object protocol to execute some parts of
+    an async function in a different Timeout TaskGroup context than
+    other parts
+"""
 
-    task = asyncio.current_task()
-    assert task is not None
 
-    async def asyncio_main():
-        return await WrapCoro(task.get_coro(), context=context)  # type: ignore  # see python/typing#1480
+class install_uncancel:
+    def __init__(self):
+        self._loop = None
+        self._new_task = None
 
-    loop = task.get_loop()
-    new_task = _task_factory(loop, asyncio_main())
+    async def __aenter__(self) -> None:
+        self._loop = loop = asyncio.get_running_loop()
+        task = asyncio.current_task(loop)
 
-    def add_done_callback(callback, context_):
-        nonlocal context
-        context = context_
-        new_task.add_done_callback(callback, context=context_)
+        if task is None or isinstance(task, _Task):
+            return
 
-    # suspend the current task so we can use its coro
-    await _async_yield(
-        WaitTaskRescheduled(
-            add_done_callback=add_done_callback,
-            abort_func=new_task.cancel,
+        context = None
+
+        async def asyncio_main():
+            return await WrapCoro(task.get_coro(), context=context)  # type: ignore  # see python/typing#1480
+
+        self._new_task = new_task = _task_factory(loop, asyncio_main())
+
+        def add_done_callback(callback, context_):
+            nonlocal context
+            context = context_
+            new_task.add_done_callback(callback, context=context_)
+
+        # suspend the current task so we can use its coro
+        await _async_yield(
+            WaitTaskRescheduled(
+                add_done_callback=add_done_callback,
+                abort_func=new_task.cancel,
+            )
         )
-    )
 
-    try:
-        yield
-    finally:
-        # tell our WrapCoro that trio is done
-        await _async_yield(UNCANCEL_DONE)
+    async def __aexit__(
+        self,
+        et: Optional[Type[BaseException]],
+        exc: Optional[BaseException],
+        tb: Optional[types.TracebackType],
+    ) -> Optional[bool]:
+        new_task = self._new_task
+        if new_task is None:
+            return
+
+        if asyncio.current_task(self._loop) is new_task:
+            # tell our WrapCoro that trio is done
+            await _async_yield(UNCANCEL_DONE)
+            return
+
+        raise RuntimeError(MISNESTING_ADVICE)
