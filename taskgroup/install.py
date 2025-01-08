@@ -152,7 +152,7 @@ class install_uncancel:
             return
 
         if asyncio.current_task(self._loop) is new_task:
-            # tell our WrapCoro that trio is done
+            # tell our WrapCoro that we are done
             await _async_yield(UNCANCEL_DONE)
             return
 
