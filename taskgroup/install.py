@@ -1,7 +1,6 @@
 import contextvars
 import asyncio
 import collections.abc
-import contextlib
 import types
 from typing import cast, Optional, Type
 
