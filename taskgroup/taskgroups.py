@@ -82,6 +82,7 @@ class _TaskGroup:
         self._errors: list[BaseException] | None = []
         self._base_error: BaseException | None = None
         self._on_completed_fut: futures.Future[Literal[True]] | None = None
+        self._cancel_on_enter = False
 
     def __repr__(self) -> str:
         info = [""]
@@ -106,6 +107,8 @@ class _TaskGroup:
         if self._parent_task is None:
             raise RuntimeError(f"TaskGroup {self!r} cannot determine the parent task")
         self._entered = True
+        if self._cancel_on_enter:
+            self.cancel()
 
         return self
 
@@ -222,6 +225,10 @@ class _TaskGroup:
             finally:
                 exc = None
 
+        # Suppress any remaining exception (exceptions deserving to be raised
+        # were raised above).
+        return True
+
     def create_task(
         self,
         coro: _TaskCompatibleCoro[_T_co],
@@ -326,6 +333,33 @@ class _TaskGroup:
             self._abort()
             self._parent_cancel_requested = True
             self._parent_task.cancel()
+
+    def cancel(self):
+        """Cancel the task group
+
+        `cancel()` will be called on any tasks in the group that aren't yet
+        done, as well as the parent (body) of the group.  This will cause the
+        task group context manager to exit *without* `asyncio.CancelledError`
+        being raised.
+
+        If `cancel()` is called before entering the task group, the group will be
+        cancelled upon entry.  This is useful for patterns where one piece of
+        code passes an unused TaskGroup instance to another in order to have
+        the ability to cancel anything run within the group.
+
+        `cancel()` is idempotent and may be called after the task group has
+        already exited.
+        """
+        if not self._entered:
+            self._cancel_on_enter = True
+            return
+        if self._exiting and not self._tasks:
+            return
+        if not self._aborting:
+            self._abort()
+            if self._parent_task and not self._parent_cancel_requested:
+                self._parent_cancel_requested = True
+                self._parent_task.cancel()
 
 
 class TaskGroup(_TaskGroup):
