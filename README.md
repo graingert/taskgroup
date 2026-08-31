@@ -24,10 +24,12 @@ if sys.python_version >= (3, 11):
 else:
     from taskgroup import run, TaskGroup, timeout
 
+
 async def main():
     async with TaskGroup() as group:
         group.create_task(task1())
         group.create_task(task2())
+
 
 run(main())
 ```
