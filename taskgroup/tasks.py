@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from typing import Any, Union, TYPE_CHECKING, Generic
-from typing_extensions import TypeAlias, TypeVar, Self
 import sys
+from typing import TYPE_CHECKING, Any, Generic, Union
+
+from typing_extensions import Self, TypeAlias, TypeVar
 
 if sys.version_info >= (3, 9):
-    from collections.abc import Generator, Coroutine, Awaitable
+    from collections.abc import Awaitable, Coroutine, Generator
 else:
-    from typing import Generator, Coroutine, Awaitable
+    from typing import Awaitable, Coroutine, Generator
 
 _YieldT_co = TypeVar("_YieldT_co", covariant=True)
 _SendT_contra = TypeVar("_SendT_contra", contravariant=True, default=None)
