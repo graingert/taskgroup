@@ -6,16 +6,13 @@ from __future__ import annotations
 
 import contextlib
 import enum
+from asyncio import events, exceptions, tasks
 from types import TracebackType
-from typing import final, Optional, Type
-
-from asyncio import events
-from asyncio import exceptions
-from asyncio import tasks
-from . import install as _install
+from typing import Optional, Type, final
 
 from typing_extensions import Self
 
+from . import install as _install
 
 __all__ = (
     "Timeout",
