@@ -6,15 +6,14 @@ from __future__ import annotations
 
 __all__ = ("Runner", "run")
 
-import sys
-
 import collections.abc
 import contextvars
 import enum
 import functools
 import signal
+import sys
 import threading
-from asyncio import AbstractEventLoop, coroutines, events, exceptions, tasks, constants
+from asyncio import AbstractEventLoop, constants, coroutines, events, exceptions, tasks
 from typing import Any, TypeVar, final
 
 from typing_extensions import Self
@@ -118,7 +117,7 @@ class Runner:
     ) -> _T:
         """Run a coroutine inside the embedded event loop."""
         if not coroutines.iscoroutine(coro):
-            raise ValueError("a coroutine was expected, got {!r}".format(coro))
+            raise ValueError(f"a coroutine was expected, got {coro!r}")
 
         if events._get_running_loop() is not None:
             # fail fast with short traceback
