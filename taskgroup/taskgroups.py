@@ -6,27 +6,24 @@
 from __future__ import annotations
 
 __all__ = ["TaskGroup"]
-import sys
-from types import TracebackType
-from asyncio import events
-from asyncio import exceptions
-from asyncio import tasks
-from asyncio import futures
 import asyncio
+import contextlib
 import contextvars
-from typing import Optional, Type
+import sys
+from asyncio import events, exceptions, futures, tasks
+from types import TracebackType
+from typing import Any, Optional, Type, Union
+
+from exceptiongroup import BaseExceptionGroup
+from typing_extensions import Literal, Self, TypeAlias, TypeVar
+
 from . import install as _install
 from . import tasks as _tasks
 
-from exceptiongroup import BaseExceptionGroup
-from typing import Any, Union
-from typing_extensions import Self, TypeAlias, Literal, TypeVar
-import contextlib
-
 if sys.version_info >= (3, 9):
-    from collections.abc import Generator, Coroutine, Awaitable
+    from collections.abc import Awaitable, Coroutine, Generator
 else:
-    from typing import Generator, Coroutine, Awaitable
+    from typing import Awaitable, Coroutine, Generator
 
 
 _T = TypeVar("_T")
