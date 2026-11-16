@@ -1,17 +1,18 @@
-import sys
-import contextvars
 import asyncio
+import contextvars
+import sys
 import types
-from typing import cast, Optional, Type
-
-from .tasks import task_factory as _task_factory, Task as _Task
+from typing import Optional, Type, cast
 
 from typing_extensions import Self, TypeVar
 
+from .tasks import Task as _Task
+from .tasks import task_factory as _task_factory
+
 if sys.version_info >= (3, 9):
-    from collections.abc import Generator, Coroutine
+    from collections.abc import Coroutine, Generator
 else:
-    from typing import Generator, Coroutine
+    from typing import Coroutine, Generator
 
 
 UNCANCEL_DONE = object()
